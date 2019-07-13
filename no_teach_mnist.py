@@ -1,24 +1,18 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.distributions import Categorical
-import torchvision
-
-from network.teacher_model.teacher_mlp import teacher_mlp
-from network.student_model.resnet import resnet32
-from network.student_model import resnet
-from network.student_model.MLP import MLP, weights_init
-from dataset.data_loader_mnist import data_loader_func
-from utils.setseed import setup_seed
-from itertools import count
-from scipy.stats import rankdata
-import math
 import argparse
 import os
-import copy
 import time
 from tensorboardX import SummaryWriter
 from tqdm import tqdm
+
+
+
+from network.student_model.resnet import resnet32
+from network.student_model.MLP import MLP
+from dataset.data_loader_mnist import data_loader_func
+from utils.setseed import setup_seed
 
 
 def student_lr_scheduler_mnist(optimizer, iterations):
@@ -99,15 +93,10 @@ def train_student():
     print('Training complete in {:.0f}h {:.0f}m {:.0f}s'.format(time_elapsed//3600, time_elapsed // 60, time_elapsed % 60))
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Learning to teach')
-    parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
-                        help='discount factor (default: 0.99)')
-    parser.add_argument('--seed', type=int, default=1, metavar='N',
-                        help='random seed (default: 543)')
-    parser.add_argument('--render', action='store_true',
-                        help='render the environment')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-                        help='interval between training status logs (default: 10)')
+    parser = argparse.ArgumentParser(description='Learning to teach--no_teach on mnist')
+    parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--batch_size', type=int, default=20)
+    parser.add_argument('--epochs', type=int, default=50)
     args = parser.parse_args()
 
     # set seed
@@ -115,24 +104,25 @@ if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config = {
-        'tau': 0.93,
-        'max_iter': 60000,
-        'batch_size': 20,
-        'max_non_increasing_steps': 10,
+        'batch_size': args.batch_size,
         'num_classes': 10,
-        'max_loss': 2.47,
-        'epochs': 50
-
+        'epochs': args.epochs,
+        'lr':0.01,
+        'momentum':0.9,
+        'weight_decay':0.0001,
+        'path_to_dataset':'./data',
+        'tensorboard_save_path':'./runs/no_teach_mnist',
+        'student_save_model':'student_no_teach_mnist.pth'
     }
 
     student_model = MLP().to(device)
 
-    dataloader = data_loader_func(batch_sizes=config['batch_size'], path_to_dataset='./data')
+    dataloader = data_loader_func(batch_sizes=config['batch_size'], path_to_dataset=config['path_to_dataset'])
 
-    optimizer = optim.SGD(student_model.parameters(), lr=0.01, momentum=0.9, weight_decay=0.0001)
+    optimizer = optim.SGD(student_model.parameters(), lr=config['lr'], momentum=config['momentum'], weight_decay=config['weight_decay'])
     criterion = nn.CrossEntropyLoss()
 
-    writer = SummaryWriter('./runs/no_teach_mnist')
+    writer = SummaryWriter(config['tensorboard_save_path'])
 
     print('Training the student starts....................')
     train_student()
@@ -140,5 +130,5 @@ if __name__ == '__main__':
     model_save_dir = './result/student'
     if not os.path.exists(model_save_dir):
         os.makedirs(model_save_dir)
-    torch.save(student_model.state_dict(), os.path.join(model_save_dir, 'student_no_teach_mnist.pth'))
-    # train_teacher(teacher_model, student_model, dataloader, device, config)
+
+    torch.save(student_model.state_dict(), os.path.join(model_save_dir, config['student_save_model']))

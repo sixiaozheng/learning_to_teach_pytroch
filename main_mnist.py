@@ -2,14 +2,12 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Categorical
-import torchvision
+
 
 from network.teacher_model.teacher_mlp import teacher_mlp
-# from network.student_model.resnet import resnet32
 from network.student_model.MLP import MLP, weights_init
 from dataset.data_loader_mnist import data_loader_func
 from utils.setseed import setup_seed
-from itertools import count
 from scipy.stats import rankdata
 import math
 import argparse
@@ -40,6 +38,7 @@ def state_func(state_config):
     state_feactues = torch.zeros((inputs.size(0), 25)).to(device)
     state_feactues[range(n_samples), labels.data] = 1
     state_feactues[range(n_samples), 10] = state_config['student_iter'] / state_config['max_iter']
+    print(average_train_loss)
     state_feactues[range(n_samples), 11] = average_train_loss / max_loss
     state_feactues[range(n_samples), 12] = best_loss_on_dev / max_loss
     state_feactues[range(n_samples), 13:23] = outputs
@@ -86,8 +85,6 @@ def train_student(config):
 
 
 def val_student(model, dataloader, device):
-    # dataloader = config['dataloader']
-    # model = self.student_model
     model.eval()
     running_loss = 0.0
     running_corrects = 0
@@ -114,23 +111,6 @@ def val_student(model, dataloader, device):
         val_acc = running_corrects.double() / total
 
     return val_loss, val_acc
-
-
-# def student_lr_scheduler_cifar10(optimizer, iterations):
-#     lr = 0.0
-#     for param_group in optimizer.param_groups:
-#         lr = param_group['lr']
-#         break
-#     if iterations == 32000:
-#         lr = lr * 0.1
-#         print('Adjust learning rate to : ', lr)
-#     elif iterations == 48000:
-#         lr = lr * 0.1
-#         print('Adjust learning rate to : ', lr)
-#     else:
-#         return
-#     for param_group in optimizer.param_groups:
-#         param_group['lr'] = lr
 
 
 def student_lr_scheduler_mnist(optimizer, iterations):
@@ -165,9 +145,6 @@ def update_teacher(config):
     optimizer.zero_grad()
 
     reward_T = rewards[-1]
-    # reward_T = -math.log(i_iter / max_iter)
-    # reward_T_histtory.append(reward_T)
-    # rewards_baseline = rewards_baseline + (reward_T - rewards_baseline) / (i_episode + 1)
     teacher_model.rewards_baseline = teacher_model.rewards_baseline + (reward_T - teacher_model.rewards_baseline) / (
                 i_episode + 1)
     baseline = 0.0 if i_episode == 0 else teacher_model.rewards_baseline
@@ -188,121 +165,6 @@ def update_teacher(config):
         config['non_increasing_steps'] = 0
     return config['non_increasing_steps']
 
-# def train_teacher(teacher_model, student_model, dataloader, device, config):
-#     training_loss_history = []
-#     val_loss_history = []
-#     num_steps_to_achieve = []
-#     teacher_updates = 0
-#     non_increasing_steps = 0
-#     student_updates = 0
-#     best_loss_on_dev = config['max_loss']
-#     # saved_log_probs = []
-#
-#     for i_episode in count(1):
-#         input_pool = []
-#         label_pool = []
-#         count_sampled = 0
-#         i_iter = 0
-#
-#         while i_iter < config['max_iter']:  # Don't infinite loop while learning
-#             # for i_iter in range(self.config['max_iter']):
-#             # collect training batch
-#             for idx, (inputs, labels) in enumerate(dataloader['teacher_train_loader']):
-#
-#                 state_config = {
-#                     'inputs': inputs.to(device),
-#                     'labels': labels.to(device),
-#                     'num_class': config['num_classes'],
-#                     'i_iter': i_iter,
-#                     'training_loss_history': training_loss_history,
-#                     'best_loss_on_dev': best_loss_on_dev,
-#                     'model': student_model,
-#                     'dataloader': dataloader,
-#                     'device': device
-#                 }
-#                 state = state_func(state_config)
-#
-#                 action_prb = teacher_model(state.detach())
-#
-#                 sampled_actions = torch.bernoulli(action_prb.data.squeeze())
-#                 indices = torch.nonzero(sampled_actions)
-#
-#                 log_probs = []
-#                 for idx, action in enumerate(sampled_actions):
-#                     if action.data == 1:
-#                         log_probs.append(torch.log(action_prb[idx]))
-#                     else:
-#                         log_probs.append(torch.log(1 - action_prb[idx]))
-#                 teacher_model.saved_log_probs.append(torch.cat(log_probs).sum())
-#
-#                 if len(indices) == 0:
-#                     continue
-#
-#                 count_sampled += len(indices)
-#                 selected_inputs = inputs[indices.squeeze()].view(len(indices), *inputs.size()[1:])
-#                 selected_labels = labels[indices.squeeze()].view(-1, 1)
-#                 input_pool.append(selected_inputs)
-#                 label_pool.append(selected_labels)
-#
-#                 i_iter += 1
-#                 if count_sampled >= config['batch_size']:
-#                     break
-#
-#             # generate data for train student model
-#             inputs = torch.cat(input_pool, 0)[:config['batch_size']]
-#             labels = torch.cat(label_pool, 0)[:config['batch_size']].squeeze()
-#
-#             input_pool_tmp, label_pool_tmp = [], []
-#             input_pool_tmp.append(torch.cat(input_pool, 0)[config['batch_size']:])
-#             label_pool_tmp.append(torch.cat(label_pool, 0)[config['batch_size']:])
-#             input_pool = input_pool_tmp
-#             label_pool = label_pool_tmp
-#             count_sampled = input_pool[0].shape[0]
-#
-#             train_student_config = {
-#                 'inputs': inputs,
-#                 'labels': labels,
-#                 'device': device,
-#                 'model': student_model,
-#                 'optimizer': optim.SGD(student_model.parameters(), lr=0.1, momentum=0.9, weight_decay=0.0001)
-#
-#             }
-#             train_loss, train_acc = train_student(train_student_config)
-#             training_loss_history.append(train_loss)
-#             i_iter += 1
-#             student_lr_scheduler(train_student_config['optimizer'], i_iter)
-#
-#             # val_student_config = {'dataloader': self.dataloader['dev_loader']}
-#             val_loss, val_acc = val_student(student_model, dataloader['dev_loader'], device)
-#             best_loss_on_dev = val_loss if val_loss < best_loss_on_dev else best_loss_on_dev
-#
-#             print('val loss: {}, val acc: {}'.format(val_loss, val_acc))
-#             if val_acc > config['tau'] or i_iter == config['max_iter']:
-#                 num_steps_to_achieve.append(i_iter)
-#
-#                 break
-#
-#         update_teacher_config = {
-#             'i_iter': i_iter,
-#             'max_iter': config['max_iter'],
-#             'non_increasing_steps': non_increasing_steps,
-#             'reward_T_histtory': teacher_model.reward_T_histtory,
-#             'rewards_baseline': teacher_model.rewards_baseline,
-#             'i_episode': i_episode,
-#             'teacher_updates': teacher_updates,
-#             'saved_log_probs': teacher_model.saved_log_probs,
-#             'optimizer': optim.Adam(teacher_model.parameters(), lr=0.001, weight_decay=0)
-#
-#         }
-#         update_teacher(update_teacher_config)
-#
-#         teacher_model.reward_T_histtory
-#         # reinit the student model
-#         # self.student_model.apply(resnet._weights_init)
-#
-#         if non_increasing_steps >= config['max_non_increasing_steps']:
-#             return
-
 
 def select_action(state):
     action_prb = teacher_model(state.detach())
@@ -318,8 +180,6 @@ def train_l2t():
     for i_episode in trange(config['train_episode']):
         training_loss_history = []
         best_loss_on_dev = config['max_loss']
-        # val_loss_history = []
-        # teacher_updates = 0
         student_updates = 0
         i_iter = 0
         input_pool = []
@@ -332,8 +192,6 @@ def train_l2t():
 
         # one episode
         while True:
-            # for i_iter in range(config['max_iter']):  # Don't infinite loop while learning
-            # count_sampled = 0
 
             for idx, (inputs, labels) in enumerate(dataloader['teacher_train_loader']):
 
@@ -409,7 +267,7 @@ def train_l2t():
                         teacher_model.rewards.append(reward_T)
                         teacher_model.reward_T_histtory.append(reward_T)
                         done = True
-                        print('acc >= 0.93 at {}， reward_T: {}'.format(i_iter, reward_T))
+                        print('acc >= {} at {}， reward_T: {}'.format(config['tau'], i_iter, reward_T))
                         print('=' * 30)
                         print(teacher_model.reward_T_histtory)
                         print('=' * 30)
@@ -418,10 +276,6 @@ def train_l2t():
                         break
                     else:
                         teacher_model.rewards.append(0)
-
-                # if done == True:
-                #     break
-
             if done == True:
                 break
 
@@ -447,8 +301,6 @@ def train_l2t():
 def test_l2t():
     training_loss_history = []
     best_loss_on_dev = config['max_loss']
-    # val_loss_history = []
-    # teacher_updates = 0
     student_updates = 0
     i_iter = 0
     input_pool = []
@@ -460,9 +312,7 @@ def test_l2t():
     # init the student
     student_model.apply(weights_init)
 
-    # one episode
-    # while True:
-    for epoch in trange(config['test_episode']):
+    for epoch in trange(config['test_epoch']):
         for idx, (inputs, labels) in enumerate(dataloader['student_train_loader']):
 
             # compute the state feature
@@ -541,61 +391,16 @@ def test_l2t():
                 if num_effective_data >= config['num_effective_data']:
                     return
     return
-    # if val_acc > config['tau'] or i_iter == config['max_iter']:
-    #     num_steps_to_achieve.append(i_iter)
-    #     reward_T = -math.log(i_iter / config['max_iter'])
-    #     teacher_model.rewards.append(reward_T)
-    #     teacher_model.reward_T_histtory.append(reward_T)
-    #     done = True
-    #     print('acc >= 0.93 at {}， reward_T: {}'.format(i_iter, reward_T))
-    #     print('=' * 30)
-    #     print(teacher_model.reward_T_histtory)
-    #     print('=' * 30)
-    #     writer.add_scalar('num_to_achieve', i_iter, i_episode)
-    #     writer.add_scalar('reward', reward_T, i_episode)
-    # else:
-    #     teacher_model.rewards.append(0)
-
-    #     if done == True:
-    #         break
-    #
-    # if done == True:
-    #     break
-
-    # update teacher
-    # update_teacher_config = {
-    #     'i_iter': i_iter,
-    #     'max_iter': config['max_iter'],
-    #     'non_increasing_steps': non_increasing_steps,
-    #     'rewards': teacher_model.rewards,
-    #     'rewards_baseline': teacher_model.rewards_baseline,
-    #     'i_episode': i_episode,
-    #     'reward_T_histtory': teacher_model.reward_T_histtory,
-    #     'saved_log_probs': teacher_model.saved_log_probs,
-    #     'optimizer': optim.Adam(teacher_model.parameters(), lr=0.001, weight_decay=0)
-    # }
-    # update_teacher(update_teacher_config)
-    #
-    # writer.add_scalar('non_increasing_steps', non_increasing_steps)
-    # teacher_model.rewards = []
-    # teacher_model.saved_log_probs = []
-    #
-    # if non_increasing_steps >= config['max_non_increasing_steps']:
-    #     print("Solved! Running reward is now {} and "
-    #           "the last episode runs to {} time steps!".format(teacher_model.reward_T_histtory[-1], i_episode))
-    #     return
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Learning to teach')
-    parser.add_argument('--gamma', type=float, default=0.99, metavar='G',
-                        help='discount factor (default: 0.99)')
-    parser.add_argument('--seed', type=int, default=1, metavar='N',
-                        help='random seed (default: 543)')
-    parser.add_argument('--render', action='store_true',
-                        help='render the environment')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-                        help='interval between training status logs (default: 10)')
+    parser = argparse.ArgumentParser(description='Learning to teach on mnist')
+    parser.add_argument('--tau', type=float, default=0.93)
+    parser.add_argument('--seed', type=int, default=1)
+    parser.add_argument('--batch_size', type=int, default=20)
+    parser.add_argument('--train_episode', type=int, default=300)
+    parser.add_argument('--test_epoch', type=int, default=150)
+    parser.add_argument('--num_effective_data', type=int, default=1500000)
     args = parser.parse_args()
 
     # set seed
@@ -603,22 +408,28 @@ if __name__ == '__main__':
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     config = {
-        'tau': 0.93,
+        'tau': args.tau,
         'max_iter': 10000,
-        'batch_size': 20,
+        'batch_size': args.batch_size,
         'max_non_increasing_steps': 5,
         'num_classes': 10,
-        'max_loss': 2.47,
-        'train_episode': 300,
-        'test_episode': 50*2,
-        'num_effective_data': 1500000
+        'max_loss': 2.5,
+        'train_episode': args.train_episode,
+        'test_epoch': args.test_epoch,
+        'num_effective_data': args.num_effective_data,
+        'path_to_dataset': './data',
+        'tensorboard_save_path': './runs/l2t_mnist',
+        'teacher_save_dir':'./result/l2t/teacher',
+        'teacher_save_model':'teacher_step1_mnist.pth',
+        'student_save_dir':'./result/l2t/student',
+        'student_save_model':'student_step2_mnist.pth'
     }
     teacher_model = teacher_mlp().to(device)
     student_model = MLP().to(device)
 
-    dataloader = data_loader_func(batch_sizes=config['batch_size'], path_to_dataset='./data')
+    dataloader = data_loader_func(batch_sizes=config['batch_size'], path_to_dataset=config['path_to_dataset'])
 
-    writer = SummaryWriter('./runs/reinforce')
+    writer = SummaryWriter(config['tensorboard_save_path'])
 
     print('Training the teacher starts....................')
     start = time.time()
@@ -626,14 +437,14 @@ if __name__ == '__main__':
     time_train = time.time() - start
 
     print('Saving the teahcer model........................')
-    model_save_dir = './result/teacher'
+    model_save_dir = config['teacher_save_dir']
     if not os.path.exists(model_save_dir):
         os.makedirs(model_save_dir)
-    torch.save(teacher_model.state_dict(), os.path.join(model_save_dir, 'teacher_step1.pth'))
+    torch.save(teacher_model.state_dict(), os.path.join(model_save_dir, config['teacher_save_model']))
 
     print('Done.\nTesting the teacher.....................')
     print('Loading the teacher model')
-    teacher_model.load_state_dict(torch.load(os.path.join(model_save_dir, 'teacher_step1.pth')))
+    teacher_model.load_state_dict(torch.load(os.path.join(model_save_dir, config['teacher_save_model'])))
     start = time.time()
     test_l2t()
     time_test = time.time() - start
@@ -642,7 +453,7 @@ if __name__ == '__main__':
     print('Testing complete in {:.0f}h {:.0f}m {:.0f}s'.format(time_test // 3600, time_test // 60, time_test % 60))
 
     print('Saving the student mdoel.......................')
-    model_save_dir = './result/student'
+    model_save_dir = config['student_save_dir']
     if not os.path.exists(model_save_dir):
         os.makedirs(model_save_dir)
-    torch.save(student_model.state_dict(), os.path.join(model_save_dir, 'student_step1.pth'))
+    torch.save(student_model.state_dict(), os.path.join(model_save_dir, config['student_save_model']))

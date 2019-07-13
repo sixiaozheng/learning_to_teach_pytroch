@@ -27,7 +27,6 @@ class MLP(nn.Module):
             1. input_dim: int (for cifar-10&mnist, d = 25 (10(data feature) + 3(model feature) + 12(combined feature)))
         '''
         super(MLP, self).__init__()
-        # self.input_dim = configs.get('input_dim', 25)
         self.fc0 = nn.Linear(input_dim, 25)  # 12 is selected by the paper.
         self.fc1 = nn.Linear(25, 12)
         self.fc2 = nn.Linear(12, 2)
