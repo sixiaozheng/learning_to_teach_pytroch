@@ -41,6 +41,6 @@ For details, please read the Experiment of the paper.
   author={Sixiao Zheng},
   year={2019},
   publisher={GitHub},
-  howpublished={\url{https://github.com/ThinkToKnow/learning_to_teach_pytroch}},
+  howpublished={\url{https://github.com/sixiaozheng/learning_to_teach_pytroch}},
 }
 ```
